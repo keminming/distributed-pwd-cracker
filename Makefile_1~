@@ -1,0 +1,18 @@
+CC = gcc
+
+TARGET = sample_client sample_server
+
+CFLAGS += -g -I/usr/include
+LDFLAGS += -g -lprotobuf-c -L/usr/lib
+
+all:	$(TARGET)
+
+$(TARGET): 	lsp.o lspmessage.pb-c.o
+
+%.o:	%.c
+	$(CC) -c $(CFLAGS) $< -o $@ -lprotobuf-c
+
+clean:
+	rm -f *.o 
+	rm -f $(TARGET)
+
