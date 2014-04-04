@@ -37,11 +37,11 @@ struct threadData data;
 double gen_random()
 {
     double ran_num = (rand()/(double)RAND_MAX);
-    //printf("Drop rate == [%f]\n",ran_num);
+	
     return ran_num;
-    
 }
 
+//compare functions
 int compare_connection1 (const void* search, const void* data)
 {
     connection* conn = (connection*)data;
@@ -92,16 +92,16 @@ int compare_msg(const void* c1, const void* c2)
     }
 }
 
+//free functions
 void free_func(void* data)
 {
-    //
+    //do nothing here
 }
 
 void free_msg(void* data)
 {
     //lspmessage__free_unpacked ((LSPMessage*)data, NULL);
 }
-
 
  bool is_connection_request(LSPMessage* message)
  {
@@ -132,7 +132,6 @@ void free_msg(void* data)
 
 void box_push(list* box, LSPMessage* msg)
 {
-    //printf("box push\n");
     pthread_mutex_lock(&box->lock);
     push_back(box, msg);
     pthread_mutex_unlock(&box->lock);
@@ -140,7 +139,6 @@ void box_push(list* box, LSPMessage* msg)
 
 void box_delete(list* box, uint32_t connid, uint32_t seq)
 {
-    //printf("box delete\n");
     pthread_mutex_lock(&box->lock);
     connid_seq cs;
     cs.connid = connid;
@@ -151,7 +149,6 @@ void box_delete(list* box, uint32_t connid, uint32_t seq)
 
 void box_pop(list* box)
 {
-    //printf("box pop\n");
     pthread_mutex_lock(&box->lock);
     remove_front(box, free_msg);
     pthread_mutex_unlock(&box->lock);   
@@ -159,7 +156,6 @@ void box_pop(list* box)
 
 LSPMessage* box_peek(list* box)
 {
-    //printf("box peek\n");
     pthread_mutex_lock(&box->lock);
     LSPMessage* msg = front(box);
     pthread_mutex_unlock(&box->lock);
@@ -173,7 +169,7 @@ bool box_find(list* box,LSPMessage* msg)
     cs.connid = msg->connid;
     cs.seq = msg->seqnum;
     pthread_mutex_lock(&box->lock);
-    //printf("box find\n");
+
     if(find_occurrence(box, &cs, compare_msg))
         exist = true;
     else
@@ -187,28 +183,12 @@ int marshal_send(uint32_t sock,struct sockaddr_in* sockaddr,LSPMessage* msg)
 {
 
     double rand = 0;
-//    if((rand = gen_random()) < DROP_RATE)
-//    {
-//        //printf("%f\n",rand);
-//        printf("Send packet dropped.\n");
-//        return 0;
-//    }
-     
+
     uint8_t* buf = malloc(MAX_MSG_SIZE);
     int rc = 0;
     uint8_t send_msg_len = lspmessage__get_packed_size(msg);
     lspmessage__pack(msg, buf);
-    
-//    printf("Marshal send\n");
-//    for(int i = 0;i<send_msg_len;i++)
-//        printf("%x ",buf[i]);
- //   printf("\n");
-    
-//    msg = lspmessage__unpack(NULL, send_msg_len, buf); 
-
-//    printf("Restored msg data[%s] len[%d]\n",msg->payload.data,msg->payload.len);
-
-        
+          
     rc = sendto(sock, buf, send_msg_len, 0,  (struct sockaddr *)sockaddr,sizeof(struct sockaddr));
     if(rc == -1)
     {
@@ -227,27 +207,24 @@ void* server_epoch_handler(void* data)
     struct lnode* current;
     while(1)
     {
-//        printf("epoch running\n");
         pthread_mutex_lock(&server->outbox_list->lock);
         current = server->outbox_list->head;
         for(i =0; i< server->outbox_list->size; i++)
         {
             LSPMessage* msg = (LSPMessage*)(current->data);
             
-            //printf("---------conn mutex\n");
             pthread_mutex_lock(&server->connecion_list->lock);
             connection* conn = find_occurrence(server->connecion_list,&(msg->connid), compare_connection1);
-            //printf("---------in conn mutex 241\n");
+
             pthread_mutex_unlock(&server->connecion_list->lock);
             
             if(conn)
             {
-//                printf("Server epoch send data to id[%d]\n", conn->connection_id);
                 marshal_send(server->listen_socket,&conn->clientaddr,current->data);
             }
             else 
             {
- //               printf("Connection lost\n");
+                printf("Connection lost\n");
             }
                 
             current = current->next;
@@ -275,7 +252,6 @@ void* server_epoch_handler(void* data)
             
             if(conn)
             {
-                //printf("server epoch Ack: connid [%s]seqnum [%d]\n",send_msg.connid,send_msg.seqnum); 
                 marshal_send(server->listen_socket,&conn->clientaddr,send_msg);
             }
             
@@ -294,13 +270,13 @@ void* server_epoch_handler(void* data)
                 e->connid = conn->connection_id;
                 push_back(server->disconnect_event_queue,e);
                 pthread_mutex_unlock(&server->disconnect_event_queue->lock);
-//                printf("connection [%d] is removed\n",conn->connection_id);
+
                 remove_data(server->connecion_list, conn, compare_connection2, free_func); 
             }
                
             current = current->next;
         }
-        //printf("---------in conn mutex 293\n");
+
         pthread_mutex_unlock(&server->connecion_list->lock);
         sleep(SLEEP_TIME);
     }
@@ -324,7 +300,7 @@ void* client_epoch_handler(void* data)
             send_msg->payload.data = malloc(sizeof(uint8_t)*strlen("NIL"));
             send_msg->payload.len = strlen("NIL");
             memcpy(send_msg->payload.data, "NIL", sizeof(uint8_t)*strlen("NIL"));
-            //printf("Client epoch Ack: [%s][%d]\n",send_msg.payload.data,send_msg.payload.len);
+
             marshal_send(client->socket,&client->serveraddr, send_msg);
         }
         pthread_mutex_unlock(&client->recv_squence_guard);
@@ -334,7 +310,7 @@ void* client_epoch_handler(void* data)
         for(i = 0; i< client->outbox_list->size; i++)
         {
             LSPMessage* msg = (LSPMessage*)(current->data);
- //           printf("Client data send: pld[%s]len[%d]connid[%d]seqnum[%d]\n",msg->payload.data,msg->payload.len,msg->connid,msg->seqnum);
+
             marshal_send(client->socket,&client->serveraddr, current->data);
             current = (node*)current->next;
         }    
@@ -362,7 +338,7 @@ void* client_epoch_handler(void* data)
 void epoch_start(void* param,epoch_handler handler)
 {
     pthread_t id;
-// create and detach the timer
+
     pthread_create(&id, NULL, handler, param);
     pthread_detach(id);
 }
@@ -409,15 +385,10 @@ void* client_network_handler(void* client)
         
         if(gen_random() < DROP_RATE)
         {
- //           printf("Recv packet dropped.\n");
+
             memset(buf,0,MAX_MSG_SIZE);       
             continue;
         }
-        
-//        printf("Client recv:\n");
-//        for(int i = 0;i<rc;i++)
-//            printf("%x ",buf[i]);
-//        printf("\n");
         
         a_client->packet_recv_in_this_epoch = true;
         LSPMessage* message = lspmessage__unpack(NULL, rc, buf);
@@ -430,7 +401,6 @@ void* client_network_handler(void* client)
         
         if(is_ack(message))
         {
-  //          printf("Client Ack recv: connid: [%d] seqnum: [%d] payload: [%s] len [%d]\n",message->connid,message->seqnum,message->payload.data,message->payload.len);
             if(a_client->connection_id == 0)//in wait connection state
             {
                 a_client->recv_sequence++;
@@ -441,11 +411,9 @@ void* client_network_handler(void* client)
         }
         else if(is_data(message))
         {         
- //           printf("Client data recv: connid: [%d] seqnum: [%d] payload: [%s] len[%d]\n",message->connid,message->seqnum,message->payload.data, message->payload.len);          
             pthread_mutex_lock(&a_client->recv_squence_guard);
             if(message->seqnum != a_client->recv_sequence)
             {
-//                printf("Wrong seq num, seq = [%d] expected seq = [%d]\n",message->seqnum,a_client->recv_sequence);
                 memset(buf,0,MAX_MSG_SIZE);
                 lspmessage__free_unpacked(message, NULL);
                 pthread_mutex_unlock(&a_client->recv_squence_guard);
@@ -460,11 +428,10 @@ void* client_network_handler(void* client)
             send_msg->connid = message->connid;
             send_msg->seqnum = message->seqnum;
             
-  //          printf("client send ack connid = [%d] seq = [%d]\n",send_msg->connid,send_msg->seqnum);
             send_msg->payload.data = malloc(sizeof(uint8_t)*strlen("NIL"));
             send_msg->payload.len = strlen("NIL");
             memcpy(send_msg->payload.data, "NIL", strlen("NIL"));
-    //        printf("Client Ack send: connid [%d] seqnum [%d]\n",send_msg->connid,send_msg->seqnum);
+
             marshal_send(a_client->socket,&a_client->serveraddr,send_msg);
             box_push(a_client->inbox_list,message);
         }
@@ -546,7 +513,6 @@ bool lsp_client_write(lsp_client* a_client, uint8_t* pld, int lth)
     send_msg->payload.data = malloc( sizeof(uint8_t)*lth);  
     send_msg->payload.len = lth;
     memcpy(send_msg->payload.data, (uint8_t*)pld, sizeof(uint8_t)*lth);
-    //printf("Client write to outbox:[%s][%d]\n",send_msg.payload.data, send_msg.payload.len);
     
     box_push(a_client->outbox_list,send_msg);
     
@@ -575,7 +541,7 @@ int lsp_client_read (lsp_client* a_client, uint8_t* pld )
          if(down_flag)
              return -1;     
     }
-    //printf("client read inbox: payload[%s] len[%d]",recv_msg->payload.data,recv_msg->payload.len);
+
     uint32_t length = recv_msg->payload.len;
     memcpy(pld,recv_msg->payload.data,recv_msg->payload.len);
     pld[recv_msg->payload.len] = '\0';
@@ -595,9 +561,8 @@ void* server_network_recv_handler(void* server)
     int rc;
     while(1)
     {      
-//        printf("network running\n");
         rc = recvfrom(s->listen_socket, buf, MAX_MSG_SIZE, 0,(struct sockaddr*)&fromaddr, &addrlen);
-//      printf("rc = [%d]\n", rc);
+
         if(rc == -1)
         {
             perror("Server recvfrom error.\n");
@@ -605,36 +570,32 @@ void* server_network_recv_handler(void* server)
         
         if(gen_random() < DROP_RATE)
         {
-//            printf("Recv packet dropped.\n");
             memset(buf,0,MAX_MSG_SIZE);       
             continue;
         }
-//      printf("Message...\n");
+
         LSPMessage* message = lspmessage__unpack(NULL, rc, buf);     
         if(is_connection_request(message))
         {                        
             printf("server connection recved\n");
             pthread_mutex_lock(&s->connecion_list->lock);
             connection* conn = find_occurrence(s->connecion_list, &fromaddr, compare_address);
-//            printf("---------networkhandler in conn mutex 590\n");
+
             pthread_mutex_unlock(&s->connecion_list->lock);
-  //          if(conn)
-//                printf("find conn.\n");
+
             if(!conn)
             {       
-//                printf("-----------------not conn\n");
                 connection* new_connection = malloc(sizeof(connection));
                 pthread_mutex_init(&(new_connection->recv_squence_guard),NULL);
                 pthread_mutex_init(&(new_connection->send_squence_guard),NULL);
                 new_connection->connection_id = ++s->connection_id_count;
                 
-//               printf("------------send_guard\n");
+
                 pthread_mutex_lock(&new_connection->send_squence_guard);
                 new_connection->send_sequence = 0;
                 new_connection->send_sequence++;
                 pthread_mutex_unlock(&new_connection->send_squence_guard);
                 
-//               printf("------------recv_guard\n");
                 pthread_mutex_lock(&new_connection->recv_squence_guard);
                 new_connection->recv_sequence = 0;
                 new_connection->recv_sequence++;
@@ -644,10 +605,9 @@ void* server_network_recv_handler(void* server)
                 new_connection->timeout = 0;
                 new_connection->packet_recv_in_this_epoch = true;
                 
-//               printf("------------conn_list_lock\n");
                 pthread_mutex_lock(&s->connecion_list->lock);
                 push_back(s->connecion_list, new_connection);
-//                printf("---------networkhandler in conn mutex 621\n");
+
                 pthread_mutex_unlock(&s->connecion_list->lock);
 
                 LSPMessage* send_msg = malloc(sizeof(LSPMessage));
@@ -664,10 +624,9 @@ void* server_network_recv_handler(void* server)
         }
         else if(is_ack(message))
         {   
-//            printf("server ack recved: connid [%d] seqnum [%d]\n",message->connid,message->seqnum);
             pthread_mutex_lock(&s->connecion_list->lock);
             connection* conn = find_occurrence(s->connecion_list, &message->connid, compare_connection1);
-//            printf("---------networkhandler in conn mutex 640\n");
+
             pthread_mutex_unlock(&s->connecion_list->lock);
             if(!conn)
                 continue;
@@ -677,21 +636,18 @@ void* server_network_recv_handler(void* server)
         }
         else if(is_data(message))
         {
-//            printf("server data recved: connid [%d] seqnum [%d] payload [%s] len [%d]\n",message->connid,message->seqnum,message->payload.data,message->payload.len);
             pthread_mutex_lock(&s->connecion_list->lock);
             connection* conn = find_occurrence(s->connecion_list, &message->connid, compare_connection1);
-//            printf("---------networkhandler in conn mutex 653\n");
+
             pthread_mutex_unlock(&s->connecion_list->lock);
             if(!conn)
             {       
-//               printf("Data recv but cant find connection.\n");
                 continue;
             }
               
             pthread_mutex_lock(&conn->recv_squence_guard);
             if(message->seqnum != conn->recv_sequence)
             {
-//                printf("Seqnum wrong, expect  = [%d].\n",conn->recv_sequence,message->seqnum);
                 lspmessage__free_unpacked(message, NULL);
                 memset(buf,0,MAX_MSG_SIZE);  
                 pthread_mutex_unlock(&conn->recv_squence_guard); 
@@ -708,13 +664,12 @@ void* server_network_recv_handler(void* server)
             send_msg->payload.data = malloc(sizeof(uint8_t)*strlen("NIL"));
             send_msg->payload.len = strlen("NIL");
             memcpy(send_msg->payload.data, "NIL", strlen("NIL"));
-//            printf("server send ack: connid [%d] seqnum [%d]\n",send_msg->connid,send_msg->seqnum);
+
             marshal_send(s->listen_socket,&conn->clientaddr,send_msg);
             box_push(s->inbox_list,message);
         }
         else
         {
- //           printf("nothing...\n");
             lspmessage__free_unpacked(message, NULL);
         }
         
@@ -733,7 +688,7 @@ bool lsp_client_close(lsp_client* a_client)
     pthread_mutex_destroy(&a_client->termintate_flag_guard);
     free(a_client);
     
-    return TRUE; //When will return FALSE;
+    return TRUE; 
 }
 
 
@@ -778,7 +733,6 @@ lsp_server* lsp_server_create(int port)
     epoch_start(server,server_epoch_handler);
     
     return server;
-    //When will return NULL
 }
 
 bool lsp_server_write(lsp_server* a_srv, void* pld, int lth, uint32_t conn_id)
@@ -795,7 +749,6 @@ bool lsp_server_write(lsp_server* a_srv, void* pld, int lth, uint32_t conn_id)
         return false;
     }
         
-    //printf("---------serverwrite in conn mutex 757\n");
     pthread_mutex_unlock(&a_srv->connecion_list->lock);
     
     send_msg->connid = conn_id;
@@ -812,7 +765,6 @@ bool lsp_server_write(lsp_server* a_srv, void* pld, int lth, uint32_t conn_id)
     int msg_len = lspmessage__pack (send_msg, buf);
     LSPMessage* p_send_msg = lspmessage__unpack(NULL, msg_len, buf);   
     
-//    printf("Server write to outbox:data[%s] len [%d]connid[%d] seq[%d]\n",send_msg->payload.data, send_msg->payload.len,send_msg->connid,send_msg->seqnum);
     box_push(a_srv->outbox_list,send_msg);
     
     while(box_find(a_srv->outbox_list,p_send_msg))
@@ -836,8 +788,6 @@ int lsp_server_read(lsp_server* a_srv, uint8_t* pld, uint32_t* conn_id)
     {
         msg = box_peek(a_srv->inbox_list);
     }
-
- //   printf("read from box connid [%d] seq [%d] pld [%s] len [%d]\n",msg->connid,msg->seqnum,msg->payload.data,msg->payload.len);
         
     *conn_id = msg->connid;
     payload_len = msg->payload.len;

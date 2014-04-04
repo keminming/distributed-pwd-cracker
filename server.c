@@ -28,6 +28,7 @@
 #define HASH_PWD_SIZE 128
 pthread_mutex_t hashmap_guard;
 pthread_mutex_t job_hash_guard;
+
 typedef struct Job
 {
     char* job_msg;
@@ -52,7 +53,26 @@ typedef struct Hash_element
 
 void free_worker(void* data)
 {
-    //
+    //we do nothing here right now
+}
+
+int compare_job(const void* j1, const void* j2)
+{
+    Job* job1 = (Job*)j1;
+    Job* job2 = (Job*)j2;
+    if(job1 == job2)
+        return true;
+    else return false;
+}
+
+int compare_worker(const void* connid, const void* w2)
+{
+    uint32_t* pconnid = (uint32_t*)connid;
+    Worker* worker2 = (Worker*)w2;
+
+    if(*pconnid == worker2->conn_id)
+        return true;
+    else return false;
 }
 
 typedef struct param
@@ -64,6 +84,8 @@ typedef struct param
     uint8_t* pld;
     uint32_t conn_id;
 }param;
+
+typedef void* (*server_packet_handler) (void* param);
 
 //"c3\n3\n12ABF551138756ADC2A88EDC23CB77B1832B7AB8'\0'"
 
@@ -86,8 +108,6 @@ int get_pld1(uint8_t* pld, uint8_t* hashed_pwd)
     
     return pwd_len;
 }
-
-
 
 int get_pld2 ( uint8_t* pld, uint8_t* hashed_pwd, uint8_t* pwd )
 {      
@@ -119,7 +139,7 @@ Worker* worker_queue_front(list* worker_queue)
         pthread_mutex_unlock(&worker_queue->lock);
         return NULL;
     }
-//    printf("get worker [%d]. \n", worker->conn_id);
+
     pthread_mutex_unlock(&worker_queue->lock);
     return worker;
 }
@@ -127,8 +147,6 @@ Worker* worker_queue_front(list* worker_queue)
 
 void join_handler(list* worker_queue, uint32_t conn_id)
 {
-
-//    printf("join_handler\n");
     Worker* worker = malloc(sizeof(Worker));
     worker->conn_id = conn_id;
     worker->job_queue = create_list();
@@ -154,7 +172,6 @@ void crack_handler(lsp_server* server,GHashTable* pwd_hash,GHashTable* job_hash,
     
     uint8_t* buf = malloc(HASH_PWD_SIZE);
     
-    //char* pwd = malloc(32);
     uint8_t* hashed_pwd = malloc(HASH_PWD_SIZE);
     
     int pwd_len = get_pld1(pld, hashed_pwd);
@@ -179,10 +196,9 @@ void crack_handler(lsp_server* server,GHashTable* pwd_hash,GHashTable* job_hash,
     is_e_in_pwd_hash = (Hash_element*)g_hash_table_lookup(pwd_hash,hashed_pwd);
     if( is_e_in_pwd_hash)
     {
-//        printf("Find this request [%s] in pwd_hash!\n", hashed_pwd);
         is_e_in_pwd_hash->connid = conn_id; 
         element->isFinished = is_e_in_pwd_hash->isFinished;
-//        printf("????task si finished, [%d]", element->isFinished );
+
         for(int i=0; i< 26; i++)
         {
             element->result_record[i]= is_e_in_pwd_hash->result_record[i];
@@ -194,14 +210,11 @@ void crack_handler(lsp_server* server,GHashTable* pwd_hash,GHashTable* job_hash,
         g_hash_table_insert(pwd_hash,hashed_pwd,element);
     }
     pthread_mutex_unlock(&hashmap_guard);
-//    printf("hash map size [%d]", g_hash_table_size (pwd_hash));
             
     if ( element->isFinished == true )
     {
-//        printf("request id [%d] is finished\n", element->connid);
         if (element->pwd && strlen(element->pwd) > 0 )
         {
-//            printf("element pwd: [%s]\n", element->pwd);
             memset(buf, 0, HASH_PWD_SIZE);
             sprintf(buf,"f%s\n%s",pld,element->pwd);
             lsp_server_write(server,buf,strlen(buf),element->connid);
@@ -221,6 +234,7 @@ void crack_handler(lsp_server* server,GHashTable* pwd_hash,GHashTable* job_hash,
         {
             continue;
         }
+		
         Job* job = malloc(sizeof(Job));
         char* key = malloc(HASH_PWD_SIZE);
         uint32_t worker_id;
@@ -243,13 +257,11 @@ void crack_handler(lsp_server* server,GHashTable* pwd_hash,GHashTable* job_hash,
         job->hash = malloc(HASH_PWD_SIZE);
         strcpy(job->hash,hashed_pwd);
         sprintf(key,"%c%s",job->start,job->hash);
-//        printf("key in c_handle = [%s]\n",key);     
 
         pthread_mutex_lock(&job_hash_guard);
         g_hash_table_insert(job_hash,key,job);
         pthread_mutex_unlock(&job_hash_guard);
 
-//        printf("////////////job_hash size [%d]\n", g_hash_table_size(job_hash));
         pthread_mutex_lock(&worker->job_queue->lock);
         push_back(worker->job_queue,job);
         pthread_mutex_unlock(&worker->job_queue->lock);
@@ -261,35 +273,13 @@ void crack_handler(lsp_server* server,GHashTable* pwd_hash,GHashTable* job_hash,
         remove_front(worker_queue, free_worker);
         pthread_mutex_unlock(&worker_queue->lock);
 
- //       printf("write to client [%s]\n", buf); 
         lsp_server_write(server,buf,strlen(buf),worker_id);   
     }
     
 }
 
-int compare_job(const void* j1, const void* j2)
-{
-    Job* job1 = (Job*)j1;
-    Job* job2 = (Job*)j2;
-    if(job1 == job2)
-        return true;
-    else return false;
-}
-
-int compare_worker(const void* connid, const void* w2)
-{
-    uint32_t* pconnid = (uint32_t*)connid;
-    Worker* worker2 = (Worker*)w2;
-//    printf("*pconnid [%d] worker2->conn_id [%d]",*pconnid,worker2->conn_id);
-    if(*pconnid == worker2->conn_id)
-        return true;
-    else return false;
-}
-
 void Find_handler(lsp_server* server,GHashTable* pwd_hash,GHashTable* job_hash, list* worker_queue,uint8_t* pld, uint32_t conn_id)
 {   
-//    printf("Find_handler\n");
-    //worker: "fa\n3\HASH\nPWD" 
     uint8_t start = pld[0];
     uint8_t* hashed_pwd = malloc(HASH_PWD_SIZE);
     uint8_t* pwd = malloc(16);
@@ -303,15 +293,13 @@ void Find_handler(lsp_server* server,GHashTable* pwd_hash,GHashTable* job_hash, 
           
     char* key = malloc(128);
     sprintf(key,"%c%s",start,hashed_pwd);
-//    printf("key in f_handle = [%s]\n",key);
-//    printf("////////////job_hash size [%d]\n", g_hash_table_size(job_hash));
+
     pthread_mutex_lock(&job_hash_guard);
     Job* j = (Job*)g_hash_table_lookup(job_hash,key);
     pthread_mutex_unlock(&job_hash_guard);
     
     if(!j)
     {
-//        printf("Error: can't find job.\n");
         return;
     }
     
@@ -336,15 +324,13 @@ void Find_handler(lsp_server* server,GHashTable* pwd_hash,GHashTable* job_hash, 
     
     if(!element)
     {         
-//        printf("cant find element\n");
         return;
     }
     
-    //element->connid: request; connid: worker
     element->result_record[start - 'a'] = 1;
     element->pwd = malloc(pwd_len); 
     memcpy(element->pwd,pwd,pwd_len); 
- //   printf("task finished\n");
+
     element->isFinished = true;
     
     uint8_t* msg = malloc(128);
@@ -357,7 +343,6 @@ void Find_handler(lsp_server* server,GHashTable* pwd_hash,GHashTable* job_hash, 
 
 void X_handler(lsp_server* server, GHashTable* pwd_hash,GHashTable* job_hash ,list* worker_queue ,uint8_t* pld, uint32_t conn_id)
 {
- //   printf("X_handler\n");
     uint8_t* hashed_pwd = malloc(HASH_PWD_SIZE);
     uint8_t start = *pld;
     
@@ -371,15 +356,12 @@ void X_handler(lsp_server* server, GHashTable* pwd_hash,GHashTable* job_hash ,li
     char* key = malloc(128);
     sprintf(key,"%c%s",start,hashed_pwd);
     
- //   printf("key in x_handle = [%s]\n",key);
- //   printf("////////////job_hash size [%d]\n", g_hash_table_size(job_hash));
     pthread_mutex_lock(&job_hash_guard);
     Job* j = (Job*)g_hash_table_lookup(job_hash, key);
     pthread_mutex_unlock(&job_hash_guard);
     
     if(!j)
     {
-  //      printf("Error: can't find job.\n");
         return;
     }
     
@@ -389,7 +371,6 @@ void X_handler(lsp_server* server, GHashTable* pwd_hash,GHashTable* job_hash ,li
     
     if(!worker)
     {
- //       printf("Error: can't find worker.\n");
         return;
     }
                
@@ -405,7 +386,6 @@ void X_handler(lsp_server* server, GHashTable* pwd_hash,GHashTable* job_hash ,li
     
     if(!element)
     {         
-//        printf("cant find element\n");
         return;
     }
     
@@ -417,21 +397,17 @@ void X_handler(lsp_server* server, GHashTable* pwd_hash,GHashTable* job_hash ,li
  
     element->result_record[start - 'a'] = -1; //false
     
-    
-    int i;
-    for(i=0; i< 26; i++)
+    for(int i=0; i< 26; i++)
     {
         if(element->result_record[i] == 0)
         {
- //         printf("result[%d] has not been recorded\n", i);
           return;
         }   
     }
     element->isFinished = true;
     
-    //"xa\n3\HASH"
     sprintf(msg,"x%s", pld);
- //   printf("-CCCCCCCCCCCCCC\n");
+
     lsp_server_write(server,msg,strlen(msg),element->connid); 
 }
 
@@ -444,7 +420,6 @@ void* worker_connection_monitor(void* parameter)
     param* p = (param*)parameter;
     while(1)
     {
- //       printf("worker_connection_monitor running.\n");
         sem_wait(&p->server->disconnect_event_queue->sem);
         pthread_mutex_lock(&p->server->disconnect_event_queue->lock);
         disconnect_event* e = front(p->server->disconnect_event_queue);
@@ -453,7 +428,6 @@ void* worker_connection_monitor(void* parameter)
         
         if(!e)
         {
- //           printf("Erorr: can't find dis event.\n");
             return NULL;
         }
         
@@ -461,7 +435,6 @@ void* worker_connection_monitor(void* parameter)
         Worker* worker = find_occurrence(p->worker_queue,&e->connid, compare_worker);
         if(!worker)
         {   
- //           printf("Error: can't find worker.\n");
             pthread_mutex_unlock(&p->worker_queue->lock);
             continue;
         }
@@ -496,7 +469,6 @@ void* worker_connection_monitor(void* parameter)
         
         remove_data(p->worker_queue, &e->connid, compare_worker, free_worker);
         
-  //      printf("free worker connid [%d]",e->connid);
         pthread_mutex_unlock(&p->worker_queue->lock);
     }     
 }
@@ -566,7 +538,6 @@ int main(int argc, char *argv[])
 
     for(;;)
     {  
-   
         pld = malloc(MAX_MSG_SIZE);
         lsp_server_read(server, pld, &conn_id);
         if ( strlen(pld) > HASH_PWD_SIZE )
@@ -583,15 +554,12 @@ int main(int argc, char *argv[])
         p->worker_queue = worker_queue;
         pthread_t id;
         pthread_create(&id,NULL,packet_handler,p);
-	//printf("[%d] threads are created\n", id); 
-        pthread_detach(id);
-	   
-        
+
+        pthread_detach(id); 
     }
     
-    sleep(1000000);
+    sleep(10000);
     return 0;
 }
 
-typedef void* (*server_packet_handler) (void* param);
 

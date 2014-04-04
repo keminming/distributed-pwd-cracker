@@ -25,7 +25,7 @@ list* create_list(void)
   list *l = malloc(sizeof(list));
   l->head = NULL;
   l->size = 0;
-  //l->lock = PTHREAD_MUTEX_INITIALIZER;
+
   pthread_mutex_init(&(l->lock),NULL);
   sem_init(&(l->sem),0,0);
   

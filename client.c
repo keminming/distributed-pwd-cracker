@@ -52,9 +52,7 @@ int main(int argc, char *argv[])
     char* hash = malloc(64);
     strcpy(hash,argv[2]);
     int len = atoi(argv[3]);
-    
- //   printf("ip [%s] port [%d] hash [%s] len[%d]",host,port,hash,len);
-    
+      
     lsp_set_epoch_lth(2);
     lsp_set_epoch_cnt(5);
     lsp_set_drop_rate(0.01);
@@ -68,20 +66,11 @@ int main(int argc, char *argv[])
         printf("Can't connect to server.\n");
         return 1;
     }
-//    int pwd_len = 4;
+
     uint8_t buf[1024] = {0};
-    
-//    uint8_t* test[3]  = {"F2DCB113A9901E381AF63627C5BD380CDEBD53E4",  //"fbkd"  
-//                         "433F1ABB485DA06BD7FB293E1F0E559394D787A",  //"higm"
-//                         "6BE6ACE26D711791A4D9E5E4DB2130327EF5F1F2"};//"dsrl"
-//    int index = 0;
+
     for(int i=0;i<5;i++)
-    {
-//        index = i%2;
-//        sprintf(buf,"ca\n%d\n%s", pwd_len, test[1] );
-//        int msg_len = strlen(buf);
-//        printf("msg_len: %d\n", msg_len);
-        
+    {    
         sprintf(buf,"ca\n%d\n%s", len, hash);
         
         if(!lsp_client_write(client, buf, strlen(buf)))
@@ -93,9 +82,6 @@ int main(int argc, char *argv[])
         }
         else
         {    
-            //receive result;
-            //worker: "fa\n3\nHASH\nPWD" "xa\n3\HASH"
-            
             uint8_t* result = malloc(MAX_MSG_SIZE);
             if(lsp_client_read(client, result)==-1)
             {
@@ -109,8 +95,7 @@ int main(int argc, char *argv[])
                 }
                 continue;
             }
-            
-                    
+                              
             if ( strlen(result) > HASH_PWD_SIZE )
             {
                 printf("Error: Message Exceed Max Buffer Size!");
@@ -129,7 +114,7 @@ int main(int argc, char *argv[])
                 memcpy(hash, pos2 + 1, (pos3-1) - (pos2+1) +1);
                 memcpy(pwd,pos3 + 1,len);
                 pwd[len] = '\0';
-  //              printf("Found: [%s] = [%s].\n",hash,pwd);
+
                 printf("Found: %s \n",pwd);
                 return 0;
             }
